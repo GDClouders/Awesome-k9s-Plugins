@@ -13,6 +13,7 @@ A list of plugins included in this repository.
 - **blame** - ***Show resource edits line by line*** - requirements: bat, kubectl-blame (you can install with krew)
 - **debug container** - ***Spawn debug container on side*** -
 - **pvc mounter** - ***Spawn container that mount a specific PVC, reachable from PVC tab*** -
+- **clone-resource** - ***Clone the selected resource with a new name and namespace*** - requirements: kubectl
 
 
 ## Usage
@@ -36,4 +37,3 @@ cp $PLUGIN_FILE ~/.config/k9s/plugins/
 | `fix`   | Fixing an existing plugin or snippet          | `fix: correct args for restart-pods plugin`  |
 | `docs`  | Updating documentation                         | `docs: add usage instructions for plugin X`  |
 | `chore` | Repo cleanup, folder reorganization, config   | `chore: reorganize plugin folders`           |
-

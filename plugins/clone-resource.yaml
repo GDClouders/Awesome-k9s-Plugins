@@ -1,0 +1,86 @@
+clone-resource:
+  shortCut: z
+  description: Clone selected resource
+  dangerous: false
+  confirm: false
+  scopes:
+    - all
+  command: bash
+  background: false
+  args:
+    - -c
+    - |
+      set -o pipefail
+
+      read -r -p "Name for the clone [$NAME]: " CLONE_NAME
+      CLONE_NAME=${CLONE_NAME:-$NAME}
+      if [[ ! "$CLONE_NAME" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]]; then
+        echo "Use a lowercase Kubernetes resource name."
+        exit 1
+      fi
+
+      read -r -p "Target namespace [$NAMESPACE]: " CLONE_NAMESPACE
+      CLONE_NAMESPACE=${CLONE_NAMESPACE:-$NAMESPACE}
+      if [ -n "$CLONE_NAMESPACE" ] && [[ ! "$CLONE_NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+        echo "Use a lowercase Kubernetes namespace."
+        exit 1
+      fi
+
+      export CLONE_NAME CLONE_NAMESPACE
+      RESOURCE_YAML=$(kubectl get "$RESOURCE_NAME" "$NAME" --context "$CONTEXT" -n "$NAMESPACE" -o yaml) || exit $?
+      IN_METADATA=false
+      SKIP_INDENT=-1
+
+      if CREATE_OUTPUT=$(
+        while IFS= read -r LINE; do
+          if (( SKIP_INDENT >= 0 )); then
+            [[ "$LINE" =~ ^([[:space:]]*) ]]
+            INDENT=${#BASH_REMATCH[1]}
+            if (( INDENT > SKIP_INDENT )); then
+              continue
+            fi
+            SKIP_INDENT=-1
+          fi
+
+          if [[ "$LINE" =~ ^status: ]]; then
+            SKIP_INDENT=0
+            continue
+          fi
+
+          if [[ "$LINE" =~ ^metadata:[[:space:]]*$ ]]; then
+            IN_METADATA=true
+            printf '%s\n' "$LINE"
+            continue
+          fi
+
+          if [[ "$IN_METADATA" == true && "$LINE" =~ ^[^[:space:]] ]]; then
+            IN_METADATA=false
+          fi
+
+          if [[ "$IN_METADATA" == true && "$LINE" =~ ^\ \ (creationTimestamp|deletionGracePeriodSeconds|deletionTimestamp|finalizers|generateName|generation|managedFields|ownerReferences|resourceVersion|selfLink|uid): ]]; then
+            SKIP_INDENT=2
+            continue
+          fi
+
+          if [[ "$IN_METADATA" == true && "$LINE" =~ ^\ \ name: ]]; then
+            printf '  name: %s\n' "$CLONE_NAME"
+            continue
+          fi
+
+          if [[ "$IN_METADATA" == true && -n "$CLONE_NAMESPACE" && "$LINE" =~ ^\ \ namespace: ]]; then
+            printf '  namespace: %s\n' "$CLONE_NAMESPACE"
+            continue
+          fi
+
+          printf '%s\n' "$LINE"
+        done <<< "$RESOURCE_YAML" |
+          kubectl create --context "$CONTEXT" -f - 2>&1
+      ); then
+        printf 'Cloned\n'
+        sleep 0.5
+      else
+        CREATE_EXIT_CODE=$?
+        printf 'Error:\n%s\n' "$CREATE_OUTPUT"
+        sleep 0.5
+        exit "$CREATE_EXIT_CODE"
+      fi
